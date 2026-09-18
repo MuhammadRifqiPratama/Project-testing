@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATM Simulator Interactive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            min-height: 100vh;
+        }
+
+        .font-mono-screen {
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        /* Glass and metallic styles */
+        .atm-frame {
+            background: linear-gradient(145deg, #334155, #1e293b);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 
+                        inset 0 1px 1px rgba(255, 255, 255, 0.1);
+            border: 1px solid #475569;
+        }
+
+        .screen-container {
+            background: #02120e;
+            box-shadow: inset 0 0 15px rgba(0, 255, 170, 0.15), 0 0 5px rgba(0,0,0,0.8);
+            border: 4px solid #0f172a;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Scanline CRT Effect */
+        .screen-container::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        /* Keypad Metallic Effect */
+        .keypad-btn {
+            background: linear-gradient(145deg, #475569, #334155);
+            box-shadow: 0 4px 0 #1e293b, inset 0 1px 1px rgba(255, 255, 255, 0.2);
+            transition: all 0.05s ease;
+        }
+        .keypad-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #1e293b, inset 0 1px 1px rgba(255, 255, 255, 0.2);
+        }
+
+        .side-btn {
+            background: linear-gradient(145deg, #64748b, #475569);
+            box-shadow: -2px 4px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+        }
+        .side-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Slot Animations */
+        @keyframes insertCard {
+            0% { transform: translateY(120px) scale(0.8); opacity: 0; }
+            50% { transform: translateY(40px) scale(1); opacity: 1; }
+            100% { transform: translateY(-30px) scale(0.6); opacity: 0; }
+        }
+
+        @keyframes printReceipt {
+            0% { max-height: 0; opacity: 0; }
+            100% { max-height: 180px; opacity: 1; }
+        }
+
+        @keyframes dispenseCash {
+            0% { transform: translateY(-20px); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateY(15px); opacity: 1; }
+        }
+
+        .animate-card { animation: insertCard 1.5s forwards ease-in-out; }
+        .animate-receipt { animation: printReceipt 2s forwards ease-out; }
+        .animate-cash { animation: dispenseCash 1.2s forwards ease-out; }
+
+        /* Custom Scrollbar for terminal logs */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #02120e; }
+        ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 3px; }
+    </style>
+</head>
+<body class="p-2 md:p-6 text-slate-100 flex flex-col justify-center items-center">
+
+    <header class="text-center mb-6">
+        <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-500">
+            <i class="fa-solid fa-building-columns mr-2 text-emerald-400"></i>ATM SIMULATOR PRO
+        </h1>
+        <p class="text-xs md:text-sm text-slate-400 mt-1">Sistem Perbankan Mandiri Interaktif (Default PIN: <span class="text-emerald-400 font-mono font-bold">123456</span>)</p>
+    </header>
+
+    <div class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- MAIN ATM MACHINE CONTAINER (8 Cols on LG) -->
+        <div class="lg:col-span-8 atm-frame rounded-2xl p-4 md:p-6 shadow-2xl relative">
+            
+            <!-- Top Logo Header -->
+            <div class="flex justify-between items-center mb-4 px-2 border-b border-slate-700/60 pb-3">
+                <div class="flex items-center space-x-2">
+                    <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span class="text-xs font-bold tracking-widest text-slate-300 uppercase">Bank Simu-Tech</span>
+                </div>
+                <div class="text-xs text-emerald-400 font-mono-screen" id="clockDisplay">00:00:00</div>
+            </div>
+
+            <!-- ATM SCREEN AREA WITH SIDE BUTTONS -->
+            <div class="grid grid-cols-12 gap-2 md:gap-3 items-center mb-6">
+                <!-- Left Side Screen Buttons -->
+                <div class="col-span-1 flex flex-col justify-around h-full space-y-3 py-6">
+                    <button onclick="handleSideButton('L1')" class="side-btn h-10 md:h-12 rounded-l-md text-xs font-bold text-slate-300 hover:text-emerald-400 focus:outline-none transition-colors border-r-2 border-emerald-500/50">L1</button>
+                    <button onclick="handleSideButton('L2')" class="side-btn h-10 md:h-12 rounded-l-md text-xs font-bold text-slate-300 hover:text-emerald-400 focus:outline-none transition-colors border-r-2 border-emerald-500/50">L2</button>
+                    <button onclick="handleSideButton('L3')" class="side-btn h-10 md:h-12 rounded-l-md text-xs font-bold text-slate-300 hover:text-emerald-400 focus:outline-none transition-colors border-r-2 border-emerald-500/50">L3</button>
+                </div>
+
+                <!-- MAIN DISPLAY SCREEN -->
+                <div class="col-span-10 screen-container rounded-xl p-4 md:p-6 min-h-[300px] md:min-h-[340px] flex flex-col justify-between text-emerald-400 font-mono-screen border border-emerald-900/50">
+                    
+                    <!-- Screen Header Bar -->
+                    <div class="flex justify-between items-center text-xs border-b border-emerald-900/60 pb-2">
+                        <span id="screenStatusTitle"><i class="fa-solid fa-shield-halved mr-1"></i> ATM SECURE SYSTEM</span>
+                        <span id="screenAttempts" class="text-amber-400 hidden">Percobaan: <span id="attemptCount">0</span>/3</span>
+                    </div>
+
+                    <!-- Screen Dynamic Content -->
+                    <div id="screenBody" class="my-auto py-2 text-center flex flex-col items-center justify-center space-y-3">
+                        <!-- Default Welcome View -->
+                        <div id="viewWelcome" class="space-y-4">
+                            <i class="fa-solid fa-credit-card text-4xl text-emerald-400 animate-bounce"></i>
+                            <h2 class="text-lg md:text-xl font-bold tracking-wide text-white">SELAMAT DATANG DI ATM SIMULATOR</h2>
+                            <p class="text-xs md:text-sm text-emerald-300/80">Silakan masukkan Kartu ATM Anda atau Tekan 'Masukkan Kartu' pada panel bawah.</p>
+                            <button onclick="insertCard()" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-lg text-sm transition shadow-lg shadow-emerald-900/40 mt-2 font-sans">
+                                <i class="fa-solid fa-right-to-bracket mr-2"></i>Masukkan Kartu ATM
+                            </button>
+                        </div>
+
+                        <!-- PIN Input View -->
+                        <div id="viewPin" class="hidden w-full max-w-xs space-y-3">
+                            <h3 class="text-sm font-semibold text-white">SILAKAN MASUKKAN PIN ANDA</h3>
+                            <div class="flex justify-center items-center space-x-2 my-2">
+                                <input type="password" id="pinDisplay" readonly maxlength="6" class="bg-black/60 border-2 border-emerald-500 text-center text-2xl tracking-[0.5em] text-emerald-400 rounded-md w-48 h-12 focus:outline-none shadow-inner" placeholder="******">
+                            </div>
+                            <p class="text-xs text-slate-400">Gunakan Keypad Angka di bawah untuk mengetik.</p>
+                            <p id="pinErrorMsg" class="text-xs text-rose-400 font-bold hidden"></p>
+                        </div>
+
+                        <!-- Main Menu View -->
+                        <div id="viewMainMenu" class="hidden w-full space-y-2 text-left">
+                            <p class="text-center text-sm font-bold text-white mb-3 border-b border-emerald-900 pb-1">PILIH MENU TRANSAKSI</p>
+                            <div class="grid grid-cols-2 gap-3 text-xs md:text-sm">
+                                <div class="bg-emerald-950/40 p-2.5 rounded border border-emerald-800/40 flex items-center justify-between">
+                                    <span>1. Cek Saldo</span>
+                                    <span class="text-xs text-emerald-500 font-sans">[L1]</span>
+                                </div>
+                                <div class="bg-emerald-950/40 p-2.5 rounded border border-emerald-800/40 flex items-center justify-between">
+                                    <span>2. Setor Tunai</span>
+                                    <span class="text-xs text-emerald-500 font-sans">[L2]</span>
+                                </div>
+                                <div class="bg-emerald-950/40 p-2.5 rounded border border-emerald-800/40 flex items-center justify-between">
+                                    <span>3. Tarik Tunai</span>
+                                    <span class="text-xs text-emerald-500 font-sans">[L3]</span>
+                                </div>
+                                <div class="bg-emerald-950/40 p-2.5 rounded border border-emerald-800/40 flex items-center justify-between text-rose-300">
+                                    <span>4. Keluar / Selesai</span>
+                                    <span class="text-xs text-rose-400 font-sans">[R3]</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cek Saldo View -->
+                        <div id="viewCekSaldo" class="hidden w-full space-y-4 text-center">
+                            <h3 class="text-base font-bold text-white">INFORMASI SALDO</h3>
+                            <div class="bg-emerald-950/60 p-4 rounded-lg border border-emerald-500/30">
+                                <p class="text-xs text-emerald-400">Saldo Rekening Anda Saat Ini:</p>
+                                <p class="text-2xl font-extrabold text-white mt-1" id="balanceDisplay">Rp 1.000.000</p>
+                            </div>
+                            <div class="pt-2 text-right">
+                                <span class="text-xs bg-emerald-900/50 px-3 py-1.5 rounded border border-emerald-700">5. Kembali [R1]</span>
+                            </div>
+                        </div>
+
+                        <!-- Setor Tunai View -->
+                        <div id="viewSetor" class="hidden w-full max-w-sm space-y-3">
+                            <h3 class="text-sm font-bold text-white">SETOR TUNAI</h3>
+                            <p class="text-xs text-emerald-300">Masukkan Jumlah Setor Tunai (Rp):</p>
+                            <input type="text" id="setorInput" readonly class="bg-black/60 border border-emerald-500 text-center text-xl text-emerald-400 rounded w-full py-2 focus:outline-none" placeholder="0">
+                            <div class="flex space-x-2 text-xs">
+                                <button onclick="quickAmountSetor(50000)" class="flex-1 bg-emerald-900/40 hover:bg-emerald-800/60 py-1.5 rounded border border-emerald-700">+50rb</button>
+                                <button onclick="quickAmountSetor(100000)" class="flex-1 bg-emerald-900/40 hover:bg-emerald-800/60 py-1.5 rounded border border-emerald-700">+100rb</button>
+                                <button onclick="quickAmountSetor(500000)" class="flex-1 bg-emerald-900/40 hover:bg-emerald-800/60 py-1.5 rounded border border-emerald-700">+500rb</button>
+                            </div>
+                            <div class="flex justify-between items-center text-xs pt-2">
+                                <span class="text-rose-400">5. Batal [R1]</span>
+                                <span class="text-emerald-300 font-bold">Tekan ENTER/OK [R2]</span>
+                            </div>
+                        </div>
+
+                        <!-- Tarik Tunai View -->
+                        <div id="viewTarik" class="hidden w-full max-w-sm space-y-3">
+                            <h3 class="text-sm font-bold text-white">TARIK TUNAI</h3>
+                            <p class="text-xs text-emerald-300">Masukkan Jumlah Penarikan (Rp):</p>
+                            <input type="text" id="tarikInput" readonly class="bg-black/60 border border-emerald-500 text-center text-xl text-emerald-400 rounded w-full py-2 focus:outline-none" placeholder="0">
+                            <div class="grid grid-cols-3 gap-2 text-xs">
+                                <button onclick="quickAmountTarik(50000)" class="bg-emerald-900/40 hover:bg-emerald-800/60 py-1.5 rounded border border-emerald-700">50.000</button>
+                                <button onclick="quickAmountTarik(100000)" class="bg-emerald-900/40 hover:bg-emerald-800/60 py-1.5 rounded border border-emerald-700">100.000</button>
+                                <button onclick="quickAmountTarik(500000)" class="bg-emerald-900/40 hover:bg-emerald-800/60 py-1.5 rounded border border-emerald-700">500.000</button>
+                            </div>
+                            <div class="flex justify-between items-center text-xs pt-2">
+                                <span class="text-rose-400">5. Batal [R1]</span>
+                                <span class="text-emerald-300 font-bold">Tekan ENTER/OK [R2]</span>
+                            </div>
+                        </div>
+
+                        <!-- Status Message Display View -->
+                        <div id="viewMessage" class="hidden w-full space-y-3 text-center">
+                            <div id="msgIcon" class="text-3xl"></div>
+                            <p id="msgText" class="text-sm md:text-base font-bold text-white px-4"></p>
+                            <p id="msgSubtext" class="text-xs text-emerald-300"></p>
+                            <div class="pt-3">
+                                <button id="msgBackButton" onclick="showMainMenu()" class="px-5 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-sans">
+                                    5. Kembali Ke Menu Utama
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Blocked Screen -->
+                        <div id="viewBlocked" class="hidden w-full text-center space-y-3 py-4">
+                            <i class="fa-solid fa-ban text-5xl text-rose-500 animate-pulse"></i>
+                            <h3 class="text-lg font-bold text-rose-400">ATM ANDA TERBLOKIR</h3>
+                            <p class="text-xs text-slate-300 px-4">Anda telah salah memasukkan PIN sebanyak 3 kali. Kartu Anda disita untuk alasan keamanan.</p>
+                            <button onclick="resetSystem()" class="mt-2 px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-sans rounded">
+                                <i class="fa-solid fa-rotate-left mr-1"></i> Reset Simulasi
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Screen Footer Bar -->
+                    <div class="flex justify-between items-center text-[10px] border-t border-emerald-900/60 pt-2 text-emerald-600">
+                        <span>TRANSAKSI AMAN</span>
+                        <span id="sessionStatus">STATUS: SIAP</span>
+                    </div>
+                </div>
+
+                <!-- Right Side Screen Buttons -->
+                <div class="col-span-1 flex flex-col justify-around h-full space-y-3 py-6">
+                    <button onclick="handleSideButton('R1')" class="side-btn h-10 md:h-12 rounded-r-md text-xs font-bold text-slate-300 hover:text-emerald-400 focus:outline-none transition-colors border-l-2 border-emerald-500/50">R1</button>
+                    <button onclick="handleSideButton('R2')" class="side-btn h-10 md:h-12 rounded-r-md text-xs font-bold text-slate-300 hover:text-emerald-400 focus:outline-none transition-colors border-l-2 border-emerald-500/50">R2</button>
+                    <button onclick="handleSideButton('R3')" class="side-btn h-10 md:h-12 rounded-r-md text-xs font-bold text-slate-300 hover:text-emerald-400 focus:outline-none transition-colors border-l-2 border-emerald-500/50">R3</button>
+                </div>
+            </div>
+
+            <!-- LOWER HARDWARE PANEL (Keypad & Hardware slots) -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 bg-slate-900/80 p-4 rounded-xl border border-slate-700/50">
+                
+                <!-- KEYPAD AREA (7 Cols) -->
+                <div class="md:col-span-7 flex flex-col items-center">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center">
+                        <i class="fa-solid fa-calculator mr-1"></i> Keypad PIN & Jumlah
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-2 w-full max-w-[240px]">
+                        <button onclick="pressKey('1')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">1</button>
+                        <button onclick="pressKey('2')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">2</button>
+                        <button onclick="pressKey('3')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">3</button>
+                        
+                        <button onclick="pressKey('4')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">4</button>
+                        <button onclick="pressKey('5')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">5</button>
+                        <button onclick="pressKey('6')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">6</button>
+                        
+                        <button onclick="pressKey('7')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">7</button>
+                        <button onclick="pressKey('8')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">8</button>
+                        <button onclick="pressKey('9')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">9</button>
+                        
+                        <button onclick="pressKey('CLEAR')" class="keypad-btn py-2.5 rounded text-xs font-bold bg-amber-600/80 hover:bg-amber-600 text-amber-100">CLEAR</button>
+                        <button onclick="pressKey('0')" class="keypad-btn py-2.5 rounded text-lg font-bold text-white">0</button>
+                        <button onclick="pressKey('ENTER')" class="keypad-btn py-2.5 rounded text-xs font-bold bg-emerald-600/80 hover:bg-emerald-600 text-emerald-100">ENTER</button>
+                    </div>
+                    
+                    <button onclick="pressKey('CANCEL')" class="mt-2 w-full max-w-[240px] py-1.5 bg-rose-800/80 hover:bg-rose-700 text-rose-100 text-xs font-bold rounded shadow">
+                        CANCEL / BATAL
+                    </button>
+                </div>
+
+                <!-- SLOTS & PHYSICAL DISPENSERS (5 Cols) -->
+                <div class="md:col-span-5 flex flex-col justify-between space-y-4">
+                    
+                    <!-- Card Slot -->
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 relative">
+                        <div class="flex justify-between items-center text-xs text-slate-300 mb-1">
+                            <span><i class="fa-solid fa-credit-card mr-1 text-emerald-400"></i> Slot Kartu</span>
+                            <span id="cardSlotStatus" class="text-[10px] text-slate-400">KOSONG</span>
+                        </div>
+                        <div class="h-3 bg-black rounded-full border border-slate-600 relative overflow-hidden flex items-center justify-center">
+                            <div id="cardSlotLight" class="w-8 h-1 bg-emerald-500/30 rounded-full"></div>
+                        </div>
+                        <div id="animatedCard" class="hidden absolute left-1/2 -translate-x-1/2 bottom-1 z-30 pointer-events-none">
+                            <div class="w-16 h-10 bg-gradient-to-r from-blue-600 to-indigo-800 rounded-md border border-white/40 shadow-lg flex items-center justify-center text-[8px] text-white font-bold">
+                                SIMU CARD
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cash Dispenser Slot -->
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 relative">
+                        <div class="flex justify-between items-center text-xs text-slate-300 mb-1">
+                            <span><i class="fa-solid fa-money-bill-wave mr-1 text-emerald-400"></i> Slot Uang Tunai</span>
+                        </div>
+                        <div class="h-4 bg-black rounded border border-slate-600 flex items-center justify-center relative overflow-hidden">
+                            <div class="w-full h-1 bg-slate-800"></div>
+                        </div>
+                        <!-- Dispensed Cash Animation Element -->
+                        <div id="cashDispenser" class="hidden absolute top-8 left-1/2 -translate-x-1/2 z-30">
+                            <div class="w-24 h-12 bg-emerald-700 border-2 border-emerald-300 rounded shadow-xl flex flex-col items-center justify-center text-white text-[10px] font-bold">
+                                💵 RUPIAH
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Receipt Slot -->
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-700">
+                        <div class="flex justify-between items-center text-xs text-slate-300 mb-1">
+                            <span><i class="fa-solid fa-receipt mr-1 text-emerald-400"></i> Resi Bukti</span>
+                        </div>
+                        <div class="h-2 bg-black rounded-full border border-slate-600"></div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SIDE LOG & RECEIPT CONTAINER (4 Cols on LG) -->
+        <div class="lg:col-span-4 space-y-6">
+            
+            <!-- PRINTED RECEIPT DISPENCER CONTAINER -->
+            <div class="bg-slate-800/90 rounded-2xl p-4 border border-slate-700 shadow-xl">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center">
+                    <i class="fa-solid fa-print mr-2 text-emerald-400"></i> Kertas Resi Tercetak
+                </h3>
+                
+                <div class="bg-slate-900 p-3 rounded-xl min-h-[160px] flex items-start justify-center overflow-hidden border border-slate-950">
+                    <div id="receiptPaper" class="hidden animate-receipt bg-amber-50 text-slate-900 p-4 rounded shadow-2xl font-mono text-xs w-full max-w-[220px] border border-amber-200">
+                        <div class="text-center border-b border-dashed border-slate-400 pb-2 mb-2">
+                            <p class="font-bold text-sm">BANK SIMU-TECH</p>
+                            <p class="text-[10px] text-slate-600">STRUK TRANSAKSI ATM</p>
+                            <p id="receiptDate" class="text-[9px] text-slate-500 mt-1"></p>
+                        </div>
+                        <div class="space-y-1 text-[11px]">
+                            <div class="flex justify-between">
+                                <span>JENIS:</span>
+                                <span id="receiptType" class="font-bold"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>JUMLAH:</span>
+                                <span id="receiptAmount"></span>
+                            </div>
+                            <div class="flex justify-between border-t border-slate-300 pt-1 mt-1">
+                                <span>SISA SALDO:</span>
+                                <span id="receiptBalance" class="font-bold"></span>
+                            </div>
+                        </div>
+                        <div class="text-center border-t border-dashed border-slate-400 pt-2 mt-3 text-[9px] text-slate-600">
+                            <p>Terima Kasih Telah Bertransaksi</p>
+                            <p>Simpan Struk Ini Sebagai Bukti</p>
+                        </div>
+                    </div>
+                    <p id="receiptPlaceholder" class="text-xs text-slate-500 self-center italic">Resi akan muncul di sini setelah transaksi selesai.</p>
+                </div>
+            </div>
+
+            <!-- SYSTEM LOG / AUDIT TRAIL -->
+            <div class="bg-slate-800/90 rounded-2xl p-4 border border-slate-700 shadow-xl">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center">
+                        <i class="fa-solid fa-terminal mr-2 text-emerald-400"></i> Audit Log Sistem
+                    </h3>
+                    <button onclick="clearLogs()" class="text-[10px] text-slate-400 hover:text-white">Bersihkan</button>
+                </div>
+                <div id="systemLogs" class="bg-black/80 rounded-lg p-3 h-48 overflow-y-auto font-mono text-[11px] space-y-1.5 border border-slate-900">
+                    <div class="text-emerald-500">[SYSTEM] ATM Simulator Diinisialisasi.</div>
+                    <div class="text-slate-400">[INFO] Saldo Awal: Rp 1.000.000</div>
+                    <div class="text-slate-400">[INFO] PIN Default: 123456</div>
+                </div>
+            </div>
+
+            <!-- QUICK GUIDE CARD -->
+            <div class="bg-emerald-950/40 rounded-2xl p-4 border border-emerald-800/50 text-xs space-y-2">
+                <p class="font-bold text-emerald-300 flex items-center">
+                    <i class="fa-solid fa-circle-info mr-2"></i> Petunjuk Penggunaan ATM:
+                </p>
+                <ul class="list-disc list-inside text-slate-300 space-y-1 pl-1 text-[11px]">
+                    <li>Klik <span class="text-emerald-400 font-semibold">"Masukkan Kartu ATM"</span> untuk mulai.</li>
+                    <li>Gunakan tombol <span class="text-emerald-400 font-semibold">Keypad</span> untuk input PIN/Nominal.</li>
+                    <li>Tombol Samping <span class="text-emerald-400 font-semibold">[L1, L2, L3, R1, R2, R3]</span> berfungsi memilih opsi di layar.</li>
+                </ul>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        // CORE ATM STATE MANAGEMENT
+        const PIN_BENAR = 123456;
+        let saldo = 1000000;
+        let percobaan = 0;
+        let loginBerhasil = false;
+        let cardInserted = false;
+        
+        // Navigation States: 'WELCOME', 'PIN', 'MAIN_MENU', 'CEK_SALDO', 'SETOR_TUNAI', 'TARIK_TUNAI', 'MESSAGE', 'BLOCKED'
+        let currentScreen = 'WELCOME';
+        
+        let pinInputBuffer = "";
+        let amountInputBuffer = "";
+        let currentTransactionType = "";
+
+        // Web Audio API Synthesizer for ATM Beeps & Sounds
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playBeep(freq = 800, type = 'sine', duration = 0.08) {
+            try {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                // Audio might be muted by browser policy
+            }
+        }
+
+        // Live Clock
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clockDisplay').innerText = now.toLocaleTimeString('id-ID');
+        }, 1000);
+
+        // System Logging Helper
+        function logAction(msg, type = 'INFO') {
+            const logBox = document.getElementById('systemLogs');
+            const time = new Date().toLocaleTimeString('id-ID');
+            let colorClass = 'text-slate-400';
+            if (type === 'SUCCESS') colorClass = 'text-emerald-400';
+            if (type === 'WARN') colorClass = 'text-amber-400';
+            if (type === 'ERROR') colorClass = 'text-rose-400';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = colorClass;
+            logEntry.innerText = `[${time}] [${type}] ${msg}`;
+            logBox.appendChild(logEntry);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('systemLogs').innerHTML = '';
+            logAction('Log dibersihkan.', 'SYSTEM');
+        }
+
+        // Format Currency Helper
+        function formatRupiah(number) {
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number);
+        }
+
+        // SCREEN ROUTER & UI UPDATER
+        function switchScreen(screenName) {
+            currentScreen = screenName;
+            
+            // Hide all view panels
+            const views = ['viewWelcome', 'viewPin', 'viewMainMenu', 'viewCekSaldo', 'viewSetor', 'viewTarik', 'viewMessage', 'viewBlocked'];
+            views.forEach(v => document.getElementById(v).classList.add('hidden'));
+
+            // Status Bar Controls
+            document.getElementById('screenAttempts').classList.add('hidden');
+            document.getElementById('sessionStatus').innerText = `STATUS: ${screenName}`;
+
+            switch (screenName) {
+                case 'WELCOME':
+                    document.getElementById('viewWelcome').classList.remove('hidden');
+                    document.getElementById('screenStatusTitle').innerHTML = `<i class="fa-solid fa-shield-halved mr-1"></i> ATM SECURE SYSTEM`;
+                    break;
+
+                case 'PIN':
+                    document.getElementById('viewPin').classList.remove('hidden');
+                    document.getElementById('screenAttempts').classList.remove('hidden');
+                    document.getElementById('attemptCount').innerText = percobaan;
+                    document.getElementById('screenStatusTitle').innerHTML = `<i class="fa-solid fa-key mr-1"></i> OTENTIKASI PIN`;
+                    pinInputBuffer = "";
+                    updatePinDisplay();
+                    break;
+
+                case 'MAIN_MENU':
+                    document.getElementById('viewMainMenu').classList.remove('hidden');
+                    document.getElementById('screenStatusTitle').innerHTML = `<i class="fa-solid fa-list mr-1"></i> MENU UTAMA`;
+                    break;
+
+                case 'CEK_SALDO':
+                    document.getElementById('viewCekSaldo').classList.remove('hidden');
+                    document.getElementById('balanceDisplay').innerText = formatRupiah(saldo);
+                    document.getElementById('screenStatusTitle').innerHTML = `<i class="fa-solid fa-wallet mr-1"></i> CEK SALDO`;
+                    logAction('Memeriksa saldo rekening.', 'INFO');
+                    break;
+
+                case 'SETOR_TUNAI':
+                    document.getElementById('viewSetor').classList.remove('hidden');
+                    amountInputBuffer = "";
+                    document.getElementById('setorInput').value = "0";
+                    document.getElementById('screenStatusTitle').innerHTML = `<i class="fa-solid fa-money-bill-trend-up mr-1"></i> SETOR TUNAI`;
+                    break;
+
+                case 'TARIK_TUNAI':
+                    document.getElementById('viewTarik').classList.remove('hidden');
+                    amountInputBuffer = "";
+                    document.getElementById('tarikInput').value = "0";
+                    document.getElementById('screenStatusTitle').innerHTML = `<i class="fa-solid fa-money-bill-transfer mr-1"></i> TARIK TUNAI`;
+                    break;
+
+                case 'MESSAGE':
+                    document.getElementById('viewMessage').classList.remove('hidden');
+                    break;
+
+                case 'BLOCKED':
+                    document.getElementById('viewBlocked').classList.remove('hidden');
+                    document.getElementById('screenStatusTitle').innerHTML = `<i class="fa-solid fa-lock mr-1"></i> TERBLOKIR`;
+                    break;
+            }
+        }
+
+        // CARD INSERTION SIMULATION
+        function insertCard() {
+            if (cardInserted) return;
+            playBeep(1000, 'sine', 0.15);
+            
+            const cardElem = document.getElementById('animatedCard');
+            cardElem.classList.remove('hidden');
+            cardElem.classList.add('animate-card');
+            
+            document.getElementById('cardSlotStatus').innerText = "DIBACA...";
+            document.getElementById('cardSlotLight').classList.replace('bg-emerald-500/30', 'bg-emerald-400');
+
+            logAction('Kartu ATM dimasukkan.', 'INFO');
+
+            setTimeout(() => {
+                cardInserted = true;
+                document.getElementById('cardSlotStatus').innerText = "TERMASUK";
+                cardElem.classList.remove('animate-card');
+                cardElem.classList.add('hidden');
+                switchScreen('PIN');
+            }, 1500);
+        }
+
+        function ejectCard() {
+            if (!cardInserted) return;
+            playBeep(600, 'sine', 0.2);
+            cardInserted = false;
+            document.getElementById('cardSlotStatus').innerText = "KOSONG";
+            document.getElementById('cardSlotLight').classList.replace('bg-emerald-400', 'bg-emerald-500/30');
+            logAction('Kartu ATM dikeluarkan.', 'INFO');
+        }
+
+        // PIN PROCESSOR
+        function updatePinDisplay() {
+            const display = document.getElementById('pinDisplay');
+            display.value = "*".repeat(pinInputBuffer.length);
+        }
+
+        function verifyPin() {
+            const inputPin = Number(pinInputBuffer);
+            if (inputPin === PIN_BENAR) {
+                playBeep(1200, 'sine', 0.15);
+                loginBerhasil = true;
+                logAction('Login PIN Berhasil.', 'SUCCESS');
+                document.getElementById('pinErrorMsg').classList.add('hidden');
+                switchScreen('MAIN_MENU');
+            } else {
+                percobaan++;
+                playBeep(300, 'sawtooth', 0.3);
+                logAction(`PIN salah. Percobaan ke-${percobaan}`, 'WARN');
+                
+                if (percobaan >= 3) {
+                    logAction('ATM Terblokir karena 3x salah PIN.', 'ERROR');
+                    switchScreen('BLOCKED');
+                } else {
+                    document.getElementById('attemptCount').innerText = percobaan;
+                    const errorMsg = document.getElementById('pinErrorMsg');
+                    errorMsg.innerText = `PIN salah! Silakan coba lagi. (${percobaan}/3)`;
+                    errorMsg.classList.remove('hidden');
+                    pinInputBuffer = "";
+                    updatePinDisplay();
+                }
+            }
+        }
+
+        // PHYSICAL KEYPAD HANDLER
+        function pressKey(key) {
+            playBeep(900, 'sine', 0.05);
+
+            if (currentScreen === 'PIN') {
+                if (key >= '0' && key <= '9') {
+                    if (pinInputBuffer.length < 6) {
+                        pinInputBuffer += key;
+                        updatePinDisplay();
+                    }
+                } else if (key === 'CLEAR') {
+                    pinInputBuffer = "";
+                    updatePinDisplay();
+                } else if (key === 'ENTER') {
+                    if (pinInputBuffer.length === 6) {
+                        verifyPin();
+                    } else {
+                        document.getElementById('pinErrorMsg').innerText = "PIN harus 6 digit!";
+                        document.getElementById('pinErrorMsg').classList.remove('hidden');
+                    }
+                } else if (key === 'CANCEL') {
+                    ejectCard();
+                    switchScreen('WELCOME');
+                }
+            } 
+            else if (currentScreen === 'SETOR_TUNAI' || currentScreen === 'TARIK_TUNAI') {
+                const targetInput = currentScreen === 'SETOR_TUNAI' ? 'setorInput' : 'tarikInput';
+                
+                if (key >= '0' && key <= '9') {
+                    if (amountInputBuffer.length < 9) { // Max 9 digits
+                        amountInputBuffer += key;
+                        document.getElementById(targetInput).value = formatRupiah(Number(amountInputBuffer));
+                    }
+                } else if (key === 'CLEAR') {
+                    amountInputBuffer = "";
+                    document.getElementById(targetInput).value = "0";
+                } else if (key === 'ENTER') {
+                    if (currentScreen === 'SETOR_TUNAI') processSetor();
+                    if (currentScreen === 'TARIK_TUNAI') processTarik();
+                } else if (key === 'CANCEL') {
+                    switchScreen('MAIN_MENU');
+                }
+            }
+            else if (currentScreen === 'MAIN_MENU') {
+                if (key === '1') switchScreen('CEK_SALDO');
+                if (key === '2') switchScreen('SETOR_TUNAI');
+                if (key === '3') switchScreen('TARIK_TUNAI');
+                if (key === '4' || key === 'CANCEL') logout();
+            }
+        }
+
+        // SIDE BUTTON CONTROLLER (L1-L3, R1-R3)
+        function handleSideButton(btnId) {
+            playBeep(700, 'sine', 0.08);
+
+            if (currentScreen === 'MAIN_MENU') {
+                if (btnId === 'L1') switchScreen('CEK_SALDO');
+                if (btnId === 'L2') switchScreen('SETOR_TUNAI');
+                if (btnId === 'L3') switchScreen('TARIK_TUNAI');
+                if (btnId === 'R3') logout();
+            } else if (currentScreen === 'CEK_SALDO') {
+                if (btnId === 'R1') switchScreen('MAIN_MENU');
+            } else if (currentScreen === 'SETOR_TUNAI') {
+                if (btnId === 'R1') switchScreen('MAIN_MENU');
+                if (btnId === 'R2') processSetor();
+            } else if (currentScreen === 'TARIK_TUNAI') {
+                if (btnId === 'R1') switchScreen('MAIN_MENU');
+                if (btnId === 'R2') processTarik();
+            }
+        }
+
+        // QUICK AMOUNT BUTTONS
+        function quickAmountSetor(val) {
+            playBeep(850, 'sine', 0.05);
+            let currentVal = Number(amountInputBuffer) || 0;
+            currentVal += val;
+            amountInputBuffer = currentVal.toString();
+            document.getElementById('setorInput').value = formatRupiah(currentVal);
+        }
+
+        function quickAmountTarik(val) {
+            playBeep(850, 'sine', 0.05);
+            amountInputBuffer = val.toString();
+            document.getElementById('tarikInput').value = formatRupiah(val);
+        }
+
+        // TRANSACTION LOGIC: SETOR TUNAI
+        function processSetor() {
+            const amount = Number(amountInputBuffer);
+            if (isNaN(amount) || amount <= 0) {
+                showMessage("Setor Tunai Gagal", "Jumlah setor tidak valid.", "Harap masukkan nominal lebih dari Rp 0.", false);
+                logAction('Setor tunai gagal: nominal tidak valid.', 'WARN');
+                return;
+            }
+
+            saldo += amount;
+            logAction(`Setor tunai berhasil: +${formatRupiah(amount)}. Saldo Baru: ${formatRupiah(saldo)}`, 'SUCCESS');
+            
+            printReceipt('SETOR TUNAI', amount, saldo);
+            showMessage(
+                "Setor Tunai Berhasil!",
+                `Saldo Anda sekarang: ${formatRupiah(saldo)}`,
+                "Struk bukti transaksi telah dicetak di panel samping.",
+                true
+            );
+        }
+
+        // TRANSACTION LOGIC: TARIK TUNAI
+        function processTarik() {
+            const amount = Number(amountInputBuffer);
+            if (isNaN(amount) || amount <= 0) {
+                showMessage("Tarik Tunai Gagal", "Jumlah penarikan tidak valid.", "Harap masukkan nominal yang sesuai.", false);
+                logAction('Penarikan gagal: nominal tidak valid.', 'WARN');
+                return;
+            }
+
+            if (amount > saldo) {
+                playBeep(300, 'sawtooth', 0.25);
+                showMessage(
+                    "Transaksi Ditolak",
+                    "Saldo Anda tidak cukup.",
+                    `Saldo Anda saat ini: ${formatRupiah(saldo)}`,
+                    false
+                );
+                logAction(`Penarikan gagal: Saldo tidak mencukupi. Ditolak: ${formatRupiah(amount)}`, 'WARN');
+            } else {
+                saldo -= amount;
+                logAction(`Penarikan berhasil: -${formatRupiah(amount)}. Saldo Sisa: ${formatRupiah(saldo)}`, 'SUCCESS');
+                
+                triggerCashDispenser();
+                printReceipt('TARIK TUNAI', amount, saldo);
+
+                showMessage(
+                    "Penarikan Berhasil!",
+                    `Saldo Anda sekarang: ${formatRupiah(saldo)}`,
+                    "Silakan ambil uang tunai dan struk Anda.",
+                    true
+                );
+            }
+        }
+
+        // SHOW TRANSACTION RESULT MESSAGE SCREEN
+        function showMessage(title, text, subtext, isSuccess) {
+            switchScreen('MESSAGE');
+            document.getElementById('screenStatusTitle').innerHTML = `<i class="fa-solid fa-bell mr-1"></i> STATUS TRANSAKSI`;
+            
+            const iconElem = document.getElementById('msgIcon');
+            if (isSuccess) {
+                iconElem.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i>`;
+            } else {
+                iconElem.innerHTML = `<i class="fa-solid fa-circle-xmark text-rose-500"></i>`;
+            }
+
+            document.getElementById('msgText').innerText = title + " - " + text;
+            document.getElementById('msgSubtext').innerText = subtext;
+        }
+
+        function showMainMenu() {
+            switchScreen('MAIN_MENU');
+        }
+
+        // RECEIPT PRINTING ANIMATION
+        function printReceipt(type, amount, currentBalance) {
+            const receiptPaper = document.getElementById('receiptPaper');
+            const placeholder = document.getElementById('receiptPlaceholder');
+            
+            placeholder.classList.add('hidden');
+            receiptPaper.classList.remove('hidden');
+            
+            document.getElementById('receiptDate').innerText = new Date().toLocaleString('id-ID');
+            document.getElementById('receiptType').innerText = type;
+            document.getElementById('receiptAmount').innerText = formatRupiah(amount);
+            document.getElementById('receiptBalance').innerText = formatRupiah(currentBalance);
+
+            // Re-trigger CSS Animation
+            receiptPaper.classList.remove('animate-receipt');
+            void receiptPaper.offsetWidth; // Trigger reflow
+            receiptPaper.classList.add('animate-receipt');
+            
+            playBeep(2000, 'square', 0.2);
+        }
+
+        // CASH DISPENSER ANIMATION
+        function triggerCashDispenser() {
+            const cashElem = document.getElementById('cashDispenser');
+            cashElem.classList.remove('hidden');
+            cashElem.classList.add('animate-cash');
+
+            setTimeout(() => {
+                cashElem.classList.remove('animate-cash');
+                cashElem.classList.add('hidden');
+            }, 3000);
+        }
+
+        // LOGOUT / EXIT
+        function logout() {
+            playBeep(500, 'sine', 0.2);
+            logAction('Pengguna keluar dari sistem.', 'INFO');
+            loginBerhasil = false;
+            ejectCard();
+            
+            // Show exit message briefly
+            showMessage(
+                "Terima Kasih",
+                "Terima kasih telah bertransaksi di ATM ini.",
+                "Jangan lupa mengambil kartu Anda.",
+                true
+            );
+
+            setTimeout(() => {
+                switchScreen('WELCOME');
+            }, 2500);
+        }
+
+        // FULL RESET SYSTEM
+        function resetSystem() {
+            saldo = 1000000;
+            percobaan = 0;
+            loginBerhasil = false;
+            cardInserted = false;
+            pinInputBuffer = "";
+            amountInputBuffer = "";
+
+            document.getElementById('receiptPaper').classList.add('hidden');
+            document.getElementById('receiptPlaceholder').classList.remove('hidden');
+
+            logAction('Sistem di-reset ke kondisi awal.', 'SYSTEM');
+            switchScreen('WELCOME');
+        }
+
+        // Keyboard Support for Accessibility
+        document.addEventListener('keydown', (e) => {
+            if (e.key >= '0' && e.key <= '9') pressKey(e.key);
+            if (e.key === 'Enter') pressKey('ENTER');
+            if (e.key === 'Backspace' || e.key === 'Delete') pressKey('CLEAR');
+            if (e.key === 'Escape') pressKey('CANCEL');
+        });
+
+        // Initialize State on Load
+        window.onload = function() {
+            switchScreen('WELCOME');
+        }
+    </script>
+</body>
+</html>
